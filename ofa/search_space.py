@@ -219,9 +219,12 @@ class OFASearchSpace:
             t = []
             for c in t_config:
               t.append(self.threshold[c])   
-            
-            return {'ks': kernel_size, 'e': exp_rate, 'd': depth, 
-            't': t, 'r': self.resolution[x[-1]]}
+
+            if not self.fix_res:
+                return {'ks': kernel_size, 'e': exp_rate, 'd': depth, 
+                't': t, 'r': self.resolution[x[-1]]}
+            else: # fixed resolution
+                return {'ks': kernel_size, 'e': exp_rate, 'd': depth, 't': t}
 
         elif (self.supernet == 'cbnmobilenetv3'):
             branches = []
