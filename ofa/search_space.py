@@ -1,6 +1,14 @@
 import numpy as np
 
-class OFASearchSpace:
+def getOFASearchSpace(supernet, lr, ur, rstep):
+    if 'mobilenetv3' in supernet:
+        return OFAMobileNetV3SearchSpace(supernet,lr, ur, rstep)
+    elif 'resnet50' in supernet:
+        return OFAResnet50SearchSpace(supernet,lr, ur, rstep)
+    else:
+        raise NotImplementedError
+
+class OFAMobileNetV3SearchSpace:
     
     def __init__(self,supernet,lr,ur,rstep):
 
@@ -18,17 +26,6 @@ class OFASearchSpace:
             self.depth = [2, 3, 4]  # number of Inverted Residual Bottleneck layers repetition
             self.threshold = [0.1, 0.2, 1] #threshold value for selection scheme
             self.nvar=49 + int(lr!=ur)
-        elif(supernet == 'resnet50'):
-            self.kernel_size = [3]  # depth-wise conv kernel size
-            self.exp_ratio = [0.2,0.25,0.35]  # expansion rate
-            self.depth = [0,1,2]  # number of Inverted Residual Bottleneck layers repetition    
-            self.nvar=46      
-        elif(supernet == 'resnet50_he'): 
-            self.num_blocks = 3
-            self.kernel_size = [3]  # depth-wise conv kernel size
-            self.exp_ratio = [1]  # expansion rate
-            self.depth = [2,3,4,5,6,7]  # number of BasicBlock layers repetition 
-            self.nvar=46
         elif(supernet == 'cbnmobilenetv3'): #NACHOS
             self.kernel_size = [3, 5, 7]  # depth-wise conv kernel size
             self.exp_ratio = [3, 4, 6]  # expansion rate
@@ -233,6 +230,74 @@ class OFASearchSpace:
             return {'ks': kernel_size, 'e': exp_rate, 'd': depth, 'b': branches}
         else: 
             print("Not yet implemented!")
+
+
+class OFAResnet50SearchSpace:
+    
+    def __init__(self, supernet,lr, ur, rstep):
+        self.num_stages = 5  
+        self.num_blocks = 18
+        self.exp_ratio = [0.2, 0.25, 0.35]  # expansion rate (e)
+        self.depth = [0, 1, 2]  # number of Inverted Residual Bottleneck layers repetition
+        self.width_mult = [0, 1, 2]  # width indices to width multipliers 0.65, 0.8, 1
+        min_res = lr
+        max_res = ur + 1
+        self.resolution = list(range(min_res, max_res, rstep))
+        self.fix_res = lr == ur
+        self.nvar = 29 + int(lr!=ur) # number of variables in the encoding
+
+    def sample(self, n_samples=1, d=None, e=None, w=None, r=None):
+        """Randomly sample a configuration."""
+        nb = self.num_blocks
+        ns = self.num_stages
+        e = self.exp_ratio if e is None else e
+        d = self.depth if d is None else d
+        w = self.width_mult if w is None else w
+        r = self.resolution if r is None else r
+        
+        data = []
+        for _ in range(n_samples):
+            depth = np.random.choice(d, ns, replace=True).tolist()  # Length of d = nb (5 blocks)
+            exp_ratio = np.random.choice(e, size=nb, replace=True).tolist()  # 18 expansion ratios (length = 18)
+            width_mult = np.random.choice(w, size=(ns+1), replace=True).tolist()  # Weight multiplier (length = 6)
+            resolution = int(np.random.choice(r)) if not self.fix_res else None
+            
+            config = {'d': depth, 'e': exp_ratio, 'w': width_mult}
+            if not self.fix_res:
+                config['r'] = resolution
+            
+            data.append(config)
+
+        return data
+
+    def encode(self, config):
+        """Encode config to integer bit-string [1, 0, 2, 1, ...]."""
+        x = []
+        depth = [np.argwhere(_x == np.array(self.depth))[0, 0] for _x in config['d']]
+        exp_ratio = [np.argwhere(_x == np.array(self.exp_ratio))[0, 0] for _x in config['e']]
+        width_mult = [np.argwhere(_x == np.array(self.width_mult))[0, 0] for _x in config['w']]
+
+        x += depth + exp_ratio + width_mult
+
+        if not self.fix_res:
+            x.append(np.argwhere(config['r'] == np.array(self.resolution))[0, 0])
+
+        return x
+
+    def decode(self, x):
+        """Decode integer bit-string to architecture configuration."""
+        x = x.astype(int)
+        depth = [self.depth[x[i]] for i in range(5)]  # First 5 elements for depth
+        exp_ratio = [self.exp_ratio[x[i]] for i in range(5, 23)]  # Next 18 elements for expansion ratios
+        width_mult = [self.width_mult[x[i]] for i in range(23, 29)]  # Next 6 elements for weight multipliers
+        
+        config = {'d': depth, 'e': exp_ratio, 'w': width_mult}
+        
+        if not self.fix_res:
+            config['r'] = self.resolution[x[-1]]
+
+        return config
+
 
 
 

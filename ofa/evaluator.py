@@ -52,13 +52,42 @@ def validate_config(config, max_depth=4):
     # return {'ks': kernel_size, 'e': exp_ratio, 'd': depth, 'w': config['w']}
     return {'ks': kernel_size, 'e': exp_ratio, 'd': depth}
 
+'''
+class OFAEvaluator:
+    """ based on OnceForAll supernet taken from https://github.com/mit-han-lab/once-for-all """
+    def __init__(self,
+                 n_classes=1000,
+                 super_net_name='ofa_supernet_mbv3_10'):
+        #other options: 
+        #    ofa_supernet_resnet50 / 
+        #    ofa_supernet_mbv3_w12 / 
+        #    ofa_supernet_proxyless
+        print("Loading OFA supernet: ", super_net_name)
+        ofa = torch.hub.load('mit-han-lab/once-for-all', super_net_name, pretrained=True)
+        in_features = ofa.classifier.linear.linear.in_features  
+        ofa.classifier.linear.linear = torch.nn.Linear(in_features, n_classes)
+        state_dict = ofa.state_dict()
+        ofa.load_state_dict(state_dict, strict=False)
+        self.engine = ofa
+
+    
+    def sample(self, config=None):
+        """ randomly sample a sub-network """
+        if config is not None:
+              self.engine.set_active_subnet(ks=config['ks'], e=config['e'], d=config['d'])
+        else:
+            config = self.engine.sample_active_subnet()
+
+        subnet = self.engine.get_active_subnet(preserve_weight=True)
+        return subnet, config
+'''
 class OFAEvaluator:
     """ based on OnceForAll supernet taken from https://github.com/mit-han-lab/once-for-all """
     def __init__(self,
                  n_classes=1000,
                  model_path='./ofa_nets/ofa_mbv3_d234_e346_k357_w1.0',
                  pretrained = False,
-                 kernel_size=None, exp_ratio=None, depth=None, threshold = None):
+                 kernel_size=None, exp_ratio=None, depth=None, threshold = None, width=None):
                  
         # default configurations (MBV3)
         self.kernel_size = [3, 5, 7] if kernel_size is None else kernel_size  # depth-wise conv kernel size
@@ -75,18 +104,29 @@ class OFAEvaluator:
         print("MODEL PATH: ", model_path)
 
         if ('ofa_mbv3' in model_path):
+
             self.engine = OFAMobileNetV3(
                 n_classes=n_classes,
                 dropout_rate=0, width_mult=self.width_mult, ks_list=self.kernel_size,
                 expand_ratio_list=self.exp_ratio, depth_list=self.depth)
             
+            if(pretrained):
+
+                init = torch.load(model_path, map_location='cpu')['state_dict']
+
+                ##FIX size mismatch error##### 
+                init['classifier.linear.weight'] = init['classifier.linear.weight'][:n_classes]
+                init['classifier.linear.bias'] = init['classifier.linear.bias'][:n_classes]
+                ##############################
+
+                self.engine.load_state_dict(init)
+            
         elif 'resnet50' in model_path:
             # default configurations
             #ks is 3 by default for resnet
-            self.kernel_size = [3] if kernel_size is None else kernel_size  # depth-wise conv kernel size
             self.exp_ratio = [0.2,0.25,0.35] if exp_ratio is None else exp_ratio  # expansion rate
             self.depth = [0,1,2] if depth is None else depth  # number of MB block repetition
-
+            self.width_mult = [0.65,0.8,1.0] if width is None else width
             self.engine = OFAResNets(n_classes = n_classes,
               bn_param=(0.1, 1e-5),
               dropout_rate = 0,
@@ -94,25 +134,32 @@ class OFAEvaluator:
               expand_ratio_list = self.exp_ratio,
               width_mult_list = self.width_mult
               ) 
+            
+            if(pretrained):
+                
+                print("Loading pretrained Resnet model")
+                init = torch.load(model_path, map_location='cpu')['state_dict']
+
+                ##FIX size mismatch error##### 
+                init['classifier.linear.linear.weight'] = init['classifier.linear.linear.weight'][:n_classes]
+                init['classifier.linear.linear.bias'] = init['classifier.linear.linear.bias'][:n_classes]
+                ##############################
+
+                self.engine.load_state_dict(init)
         else:
 
           raise NotImplementedError 
-            
-        if(pretrained):
-
-            init = torch.load(model_path, map_location='cpu')['state_dict']
-
-            ##FIX size mismatch error##### 
-            init['classifier.linear.weight'] = init['classifier.linear.weight'][:n_classes]
-            init['classifier.linear.bias'] = init['classifier.linear.bias'][:n_classes]
-            ##############################
-
-            self.engine.load_state_dict(init)  
+             
             
     def sample(self, config=None):
         """ randomly sample a sub-network """
         if config is not None:
-              self.engine.set_active_subnet(ks=config['ks'], e=config['e'], d=config['d'])
+            if isinstance(self.engine,OFAResNets):
+                    self.engine.set_active_subnet(w=config['w'], e=config['e'], d=config['d'])
+            elif isinstance(self.engine,OFAMobileNetV3):
+                    self.engine.set_active_subnet(ks=config['ks'], e=config['e'], d=config['d'])
+            else:
+                    raise NotImplementedError
         else:
             config = self.engine.sample_active_subnet()
 
@@ -156,14 +203,13 @@ class OFAEvaluator:
         # set the image size. You can set any image size from 192 to 256 here
         run_config.data_provider.assign_active_img_size(resolution)
 
-        if n_epochs > 0:
+        #if n_epochs > 0:
             # for datasets other than the one supernet was trained on (ImageNet)
             # a few epochs of training need to be applied
-            ''' these lines are commented to avoid AttributeError: 'MobileNetV3' object has no attribute 'reset_classifier'
-            subnet.reset_classifier(
-                last_channel=subnet.classifier.in_features,
-                n_classes=run_config.data_provider.n_classes, dropout_rate=cfgs.drop_rate)
-            '''
+            #these lines are commented to avoid AttributeError: 'MobileNetV3' object has no attribute 'reset_classifier'
+            #subnet.reset_classifier(
+            #last_channel=subnet.classifier.in_features,
+            #n_classes=run_config.data_provider.n_classes, dropout_rate=cfgs.drop_rate)
 
         run_manager = RunManager(log_dir, subnet, run_config, init=False)
         
@@ -187,6 +233,7 @@ class OFAEvaluator:
             json.dump(info, handle)
         
         print(info)
+
 
 
 
