@@ -52,40 +52,11 @@ def validate_config(config, max_depth=4):
     # return {'ks': kernel_size, 'e': exp_ratio, 'd': depth, 'w': config['w']}
     return {'ks': kernel_size, 'e': exp_ratio, 'd': depth}
 
-'''
 class OFAEvaluator:
     """ based on OnceForAll supernet taken from https://github.com/mit-han-lab/once-for-all """
     def __init__(self,
                  n_classes=1000,
-                 super_net_name='ofa_supernet_mbv3_10'):
-        #other options: 
-        #    ofa_supernet_resnet50 / 
-        #    ofa_supernet_mbv3_w12 / 
-        #    ofa_supernet_proxyless
-        print("Loading OFA supernet: ", super_net_name)
-        ofa = torch.hub.load('mit-han-lab/once-for-all', super_net_name, pretrained=True)
-        in_features = ofa.classifier.linear.linear.in_features  
-        ofa.classifier.linear.linear = torch.nn.Linear(in_features, n_classes)
-        state_dict = ofa.state_dict()
-        ofa.load_state_dict(state_dict, strict=False)
-        self.engine = ofa
-
-    
-    def sample(self, config=None):
-        """ randomly sample a sub-network """
-        if config is not None:
-              self.engine.set_active_subnet(ks=config['ks'], e=config['e'], d=config['d'])
-        else:
-            config = self.engine.sample_active_subnet()
-
-        subnet = self.engine.get_active_subnet(preserve_weight=True)
-        return subnet, config
-'''
-class OFAEvaluator:
-    """ based on OnceForAll supernet taken from https://github.com/mit-han-lab/once-for-all """
-    def __init__(self,
-                 n_classes=1000,
-                 model_path='./ofa_nets/ofa_mbv3_d234_e346_k357_w1.0',
+                 model_path='./NasSearchSpace/ofa/supernets/ofa_mbv3_d234_e346_k357_w1.0',
                  pretrained = False,
                  kernel_size=None, exp_ratio=None, depth=None, threshold = None, width=None):
                  
@@ -165,6 +136,9 @@ class OFAEvaluator:
 
         subnet = self.engine.get_active_subnet(preserve_weight=True)
         return subnet, config
+    
+    
+    '''
 
     @staticmethod
     def save_net_config(path, net, config_name='net.config'):
@@ -233,6 +207,7 @@ class OFAEvaluator:
             json.dump(info, handle)
         
         print(info)
+    '''
 
 
 
