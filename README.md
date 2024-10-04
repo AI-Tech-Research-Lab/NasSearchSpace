@@ -1,9 +1,10 @@
 # NasSearchSpace
 
 Repo containing different search spaces for NAS:
-- Once-For-All (OFA) (MobileNetV3 with resolutions ranging in 128 - 224)
-- NASBench201 (CNNs with fixed resolution at 32)
-- DARTS (CNNs with fixed resolution at 32)
+- Once-For-All (OFA) MobilenetV3
+- OFA Resnet50
+- NASBench201
+- DARTS
 
 # References
 
