@@ -6,7 +6,7 @@ Repo containing different search spaces for NAS:
 - NASBench201
 - DARTS
 
-Pretrained weights of OFA can now be downloaded from torch!!
+Pretrained weights of OFA can now be downloaded from torch!! Place the weights file in ofa/supernets.
 ```
 import torch
 super_net_name = "ofa_supernet_mbv3_w10" 
